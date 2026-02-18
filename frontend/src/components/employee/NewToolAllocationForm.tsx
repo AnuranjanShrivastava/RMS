@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { allocationApi } from '../../services/api';
+import { useAuthStore } from '../../store/useAuthStore';
 
 interface AITool {
     id: string;
@@ -9,9 +11,11 @@ interface AITool {
 interface NewToolAllocationFormProps {
     onClose: () => void;
     aiTools: AITool[];
+    onSuccess?: () => void;
 }
 
-function NewToolAllocationForm({ onClose, aiTools }: NewToolAllocationFormProps) {
+function NewToolAllocationForm({ onClose, aiTools, onSuccess }: NewToolAllocationFormProps) {
+    const { employeeId } = useAuthStore();
     const [formData, setFormData] = useState({
         employeeName: '',
         employeeEmail: '',
@@ -21,6 +25,8 @@ function NewToolAllocationForm({ onClose, aiTools }: NewToolAllocationFormProps)
         endDate: '',
         notes: '',
     });
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     // Auto-calculate end date when start date changes
     useEffect(() => {
@@ -36,17 +42,45 @@ function NewToolAllocationForm({ onClose, aiTools }: NewToolAllocationFormProps)
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData((prev) => ({ ...prev, [name]: value }));
+        setError(null); // Clear error when user types
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        // Handle form submission - you can add API call here
-        console.log('Form submitted:', formData);
-        alert('New Tool Allocation Request submitted successfully!');
-        onClose();
+        setIsSubmitting(true);
+        setError(null);
+
+        if (!employeeId) {
+            setError('Employee ID not found. Please login again.');
+            setIsSubmitting(false);
+            return;
+        }
+
+        try {
+            await allocationApi.createAllocation({
+                employeeId: employeeId,
+                employeeName: formData.employeeName,
+                employeeEmail: formData.employeeEmail,
+                employeeDepartment: formData.employeeDepartment,
+                aiToolId: formData.aiToolId,
+                startDate: formData.startDate,
+                endDate: formData.endDate,
+                notes: formData.notes || undefined,
+            });
+
+            alert('New Tool Allocation Request submitted successfully!');
+            onSuccess?.(); // Refresh the allocations list
+            onClose();
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Failed to submit request. Please try again.';
+            setError(errorMessage);
+            console.error('Error submitting allocation request:', err);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
-    const departments = ['PHP', '.NET', 'AI/ML', 'React JS', 'Node.js', 'Python', 'Java', 'Angular', 'Vue.js'];
+    const departments = ['Laravel', "UI/UX", "Devops", "QA", "ROR", "Salesforce", 'PHP', '.NET', 'AI/ML/DS', 'React JS , Next JS', 'Node.js', 'Python', 'Java', 'Angular', 'Vue.js'];
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4 overflow-y-auto">
@@ -62,6 +96,13 @@ function NewToolAllocationForm({ onClose, aiTools }: NewToolAllocationFormProps)
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
+                    {/* Error Message */}
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                            {error}
+                        </div>
+                    )}
+
                     {/* Employee Name */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -195,9 +236,10 @@ function NewToolAllocationForm({ onClose, aiTools }: NewToolAllocationFormProps)
                         </button>
                         <button
                             type="submit"
-                            className="flex-1 px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all duration-300 shadow-md hover:shadow-lg"
+                            disabled={isSubmitting}
+                            className="flex-1 px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            Submit Request
+                            {isSubmitting ? 'Submitting...' : 'Submit Request'}
                         </button>
                     </div>
                 </form>

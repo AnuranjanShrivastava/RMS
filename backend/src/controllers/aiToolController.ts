@@ -1,15 +1,19 @@
 import { Request, Response } from 'express';
-import { aiTools } from '../data/aiToolsData';
+import { aiToolService } from '../services/aiToolService';
 
 // Get all AI tools
-export const getAllAITools = (req: Request, res: Response): void => {
+export const getAllAITools = async (req: Request, res: Response): Promise<void> => {
     try {
+        console.log("Fetching tools");
+        const tools = await aiToolService.getAll();
+        console.log(tools);
         res.json({
             success: true,
-            data: aiTools,
+            data: tools,
             message: 'AI tools fetched successfully',
         });
     } catch (error) {
+        console.error('Error fetching AI tools:', error);
         res.status(500).json({
             success: false,
             message: 'Error fetching AI tools',
@@ -19,10 +23,10 @@ export const getAllAITools = (req: Request, res: Response): void => {
 };
 
 // Get single AI tool by ID
-export const getAIToolById = (req: Request, res: Response): void => {
+export const getAIToolById = async (req: Request, res: Response): Promise<void> => {
     try {
         const { id } = req.params;
-        const tool = aiTools.find((t) => t.id === id);
+        const tool = await aiToolService.getById(id);
 
         if (!tool) {
             res.status(404).json({
@@ -47,7 +51,7 @@ export const getAIToolById = (req: Request, res: Response): void => {
 };
 
 // Create new AI tool
-export const createAITool = (req: Request, res: Response): void => {
+export const createAITool = async (req: Request, res: Response): Promise<void> => {
     try {
         const { name, monthlyPrice } = req.body;
 
@@ -59,13 +63,10 @@ export const createAITool = (req: Request, res: Response): void => {
             return;
         }
 
-        const newTool: AITool = {
-            id: Date.now().toString(),
+        const newTool = await aiToolService.create({
             name: name.trim(),
             monthlyPrice: monthlyPrice.trim(),
-        };
-
-        aiTools.push(newTool);
+        });
 
         res.status(201).json({
             success: true,
@@ -82,30 +83,30 @@ export const createAITool = (req: Request, res: Response): void => {
 };
 
 // Update AI tool
-export const updateAITool = (req: Request, res: Response): void => {
+export const updateAITool = async (req: Request, res: Response): Promise<void> => {
     try {
         const { id } = req.params;
         const { name, monthlyPrice } = req.body;
 
-        const toolIndex = aiTools.findIndex((t) => t.id === id);
+        const updateData: { name?: string; monthlyPrice?: string } = {};
+        if (name) updateData.name = name.trim();
+        if (monthlyPrice) updateData.monthlyPrice = monthlyPrice.trim();
 
-        if (toolIndex === -1) {
+        const updatedTool = await aiToolService.update(id, updateData);
+
+        res.json({
+            success: true,
+            data: updatedTool,
+            message: 'AI tool updated successfully',
+        });
+    } catch (error) {
+        if (error instanceof Error && error.message === 'AI tool not found') {
             res.status(404).json({
                 success: false,
                 message: 'AI tool not found',
             });
             return;
         }
-
-        if (name) aiTools[toolIndex].name = name.trim();
-        if (monthlyPrice) aiTools[toolIndex].monthlyPrice = monthlyPrice.trim();
-
-        res.json({
-            success: true,
-            data: aiTools[toolIndex],
-            message: 'AI tool updated successfully',
-        });
-    } catch (error) {
         res.status(500).json({
             success: false,
             message: 'Error updating AI tool',
@@ -115,27 +116,23 @@ export const updateAITool = (req: Request, res: Response): void => {
 };
 
 // Delete AI tool
-export const deleteAITool = (req: Request, res: Response): void => {
+export const deleteAITool = async (req: Request, res: Response): Promise<void> => {
     try {
         const { id } = req.params;
-        const toolIndex = aiTools.findIndex((t) => t.id === id);
+        await aiToolService.delete(id);
 
-        if (toolIndex === -1) {
+        res.json({
+            success: true,
+            message: 'AI tool deleted successfully',
+        });
+    } catch (error) {
+        if (error instanceof Error && error.message === 'AI tool not found') {
             res.status(404).json({
                 success: false,
                 message: 'AI tool not found',
             });
             return;
         }
-
-        const deletedTool = aiTools.splice(toolIndex, 1)[0];
-
-        res.json({
-            success: true,
-            data: deletedTool,
-            message: 'AI tool deleted successfully',
-        });
-    } catch (error) {
         res.status(500).json({
             success: false,
             message: 'Error deleting AI tool',

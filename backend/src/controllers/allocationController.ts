@@ -1,10 +1,9 @@
 import { Request, Response } from 'express';
-import { allocations } from '../data/allocationsData';
-import { aiTools } from '../data/aiToolsData';
-import type { Allocation } from '../types/allocation';
+import { allocationService } from '../services/allocationService';
+import { aiToolService } from '../services/aiToolService';
 
 // Get all allocations for an employee
-export const getEmployeeAllocations = (req: Request, res: Response): void => {
+export const getEmployeeAllocations = async (req: Request, res: Response): Promise<void> => {
     try {
         const { employeeId } = req.params;
 
@@ -16,9 +15,7 @@ export const getEmployeeAllocations = (req: Request, res: Response): void => {
             return;
         }
 
-        const employeeAllocations = allocations.filter(
-            (allocation) => allocation.employeeId === employeeId
-        );
+        const employeeAllocations = await allocationService.getByEmployeeId(employeeId);
 
         res.json({
             success: true,
@@ -35,10 +32,10 @@ export const getEmployeeAllocations = (req: Request, res: Response): void => {
 };
 
 // Get single allocation by ID
-export const getAllocationById = (req: Request, res: Response): void => {
+export const getAllocationById = async (req: Request, res: Response): Promise<void> => {
     try {
         const { id } = req.params;
-        const allocation = allocations.find((a) => a.id === id);
+        const allocation = await allocationService.getById(id);
 
         if (!allocation) {
             res.status(404).json({
@@ -63,7 +60,7 @@ export const getAllocationById = (req: Request, res: Response): void => {
 };
 
 // Get active allocations for an employee
-export const getActiveEmployeeAllocations = (req: Request, res: Response): void => {
+export const getActiveEmployeeAllocations = async (req: Request, res: Response): Promise<void> => {
     try {
         const { employeeId } = req.params;
 
@@ -75,9 +72,7 @@ export const getActiveEmployeeAllocations = (req: Request, res: Response): void 
             return;
         }
 
-        const activeAllocations = allocations.filter(
-            (allocation) => allocation.employeeId === employeeId && allocation.status === 'approved'
-        );
+        const activeAllocations = await allocationService.getActiveByEmployeeId(employeeId);
 
         res.json({
             success: true,
@@ -94,21 +89,21 @@ export const getActiveEmployeeAllocations = (req: Request, res: Response): void 
 };
 
 // Create new allocation request
-export const createAllocation = (req: Request, res: Response): void => {
+export const createAllocation = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { employeeName, employeeEmail, employeeDepartment, aiToolId, startDate, endDate, notes } = req.body;
+        const { employeeId, employeeName, employeeEmail, employeeDepartment, aiToolId, startDate, endDate, notes } = req.body;
 
         // Validate required fields
-        if (!employeeName || !employeeEmail || !employeeDepartment || !aiToolId || !startDate || !endDate) {
+        if (!employeeId || !employeeName || !employeeEmail || !employeeDepartment || !aiToolId || !startDate || !endDate) {
             res.status(400).json({
                 success: false,
-                message: 'Missing required fields: employeeName, employeeEmail, employeeDepartment, aiToolId, startDate, and endDate are required',
+                message: 'Missing required fields: employeeId, employeeName, employeeEmail, employeeDepartment, aiToolId, startDate, and endDate are required',
             });
             return;
         }
 
         // Find the AI tool to get its name and price
-        const aiTool = aiTools.find((tool) => tool.id === aiToolId);
+        const aiTool = await aiToolService.getById(aiToolId);
         if (!aiTool) {
             res.status(404).json({
                 success: false,
@@ -118,9 +113,8 @@ export const createAllocation = (req: Request, res: Response): void => {
         }
 
         // Create new allocation
-        const newAllocation: Allocation = {
-            id: Date.now().toString(),
-            employeeId: '1', // Associate with employee ID 1
+        const newAllocation = await allocationService.create({
+            employeeId: employeeId.trim(),
             employeeName: employeeName.trim(),
             employeeEmail: employeeEmail.trim(),
             employeeDepartment: employeeDepartment.trim(),
@@ -131,10 +125,7 @@ export const createAllocation = (req: Request, res: Response): void => {
             endDate: endDate,
             notes: notes ? notes.trim() : undefined,
             status: 'pending_approval', // Set status as pending_approval initially
-        };
-
-        // Add to allocations array
-        allocations.push(newAllocation);
+        });
 
         res.status(201).json({
             success: true,
@@ -145,6 +136,126 @@ export const createAllocation = (req: Request, res: Response): void => {
         res.status(500).json({
             success: false,
             message: 'Error creating allocation request',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+};
+
+// Get all pending approval requests (for admin)
+export const getAllPendingRequests = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const pendingRequests = await allocationService.getPendingRequests();
+
+        res.json({
+            success: true,
+            data: pendingRequests,
+            message: 'Pending requests fetched successfully',
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching pending requests',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+};
+
+// Get all processed requests (approved + rejected) (for admin)
+export const getAllProcessedRequests = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const processedRequests = await allocationService.getProcessedRequests();
+
+        res.json({
+            success: true,
+            data: processedRequests,
+            message: 'Processed requests fetched successfully',
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching processed requests',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+};
+
+// Approve allocation request
+export const approveAllocation = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { id } = req.params;
+        const approvedAllocation = await allocationService.approve(id);
+
+        res.json({
+            success: true,
+            data: approvedAllocation,
+            message: 'Allocation approved successfully',
+        });
+    } catch (error) {
+        if (error instanceof Error) {
+            if (error.message === 'Allocation not found') {
+                res.status(404).json({
+                    success: false,
+                    message: 'Allocation not found',
+                });
+                return;
+            }
+            if (error.message === 'Only pending_approval requests can be approved') {
+                res.status(400).json({
+                    success: false,
+                    message: 'Only pending_approval requests can be approved',
+                });
+                return;
+            }
+        }
+        res.status(500).json({
+            success: false,
+            message: 'Error approving allocation',
+            error: error instanceof Error ? error.message : 'Unknown error',
+        });
+    }
+};
+
+// Reject allocation request
+export const rejectAllocation = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { id } = req.params;
+        const { rejectionReason } = req.body;
+
+        if (!rejectionReason || rejectionReason.trim() === '') {
+            res.status(400).json({
+                success: false,
+                message: 'Rejection reason is required',
+            });
+            return;
+        }
+
+        const rejectedAllocation = await allocationService.reject(id, rejectionReason);
+
+        res.json({
+            success: true,
+            data: rejectedAllocation,
+            message: 'Allocation rejected successfully',
+        });
+    } catch (error) {
+        if (error instanceof Error) {
+            if (error.message === 'Allocation not found') {
+                res.status(404).json({
+                    success: false,
+                    message: 'Allocation not found',
+                });
+                return;
+            }
+            if (error.message === 'Only pending_approval requests can be rejected') {
+                res.status(400).json({
+                    success: false,
+                    message: 'Only pending_approval requests can be rejected',
+                });
+                return;
+            }
+        }
+        res.status(500).json({
+            success: false,
+            message: 'Error rejecting allocation',
             error: error instanceof Error ? error.message : 'Unknown error',
         });
     }

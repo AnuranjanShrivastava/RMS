@@ -1,33 +1,64 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import NewToolAllocationForm from './employee/NewToolAllocationForm';
+import AllocationList from './employee/AllocationList';
 import { aiToolsApi, allocationApi, type AITool, type Allocation } from '../services/api';
+import { useAuthStore } from '../store/useAuthStore';
 
 function Employee() {
-    const EMPLOYEE_ID = '1'; // Dummy employee ID
+    const navigate = useNavigate();
+    const { employeeId } = useAuthStore();
     const [allocations, setAllocations] = useState<Allocation[]>([]);
     const [loadingAllocations, setLoadingAllocations] = useState(true);
     const [showRequestModal, setShowRequestModal] = useState(false);
     const [showAllocationForm, setShowAllocationForm] = useState(false);
     const [aiTools, setAiTools] = useState<AITool[]>([]);
     const [loadingTools, setLoadingTools] = useState(true);
+    const [activeTab, setActiveTab] = useState<'pending' | 'rejected' | 'approved'>('approved');
 
     // Fetch Employee Allocations from API
-    useEffect(() => {
-        const fetchAllocations = async () => {
-            try {
-                setLoadingAllocations(true);
-                const data = await allocationApi.getEmployeeAllocations(EMPLOYEE_ID);
-                setAllocations(data);
-            } catch (err) {
-                console.error('Error fetching allocations:', err);
-                setAllocations([]);
-            } finally {
-                setLoadingAllocations(false);
-            }
-        };
+    const fetchAllocations = async () => {
+        if (!employeeId) {
+            console.error('Employee ID not found');
+            return;
+        }
+        try {
+            setLoadingAllocations(true);
+            const data = await allocationApi.getEmployeeAllocations(employeeId);
+            // Sort by startDate descending (most recent first) as a fallback
+            // Backend already sorts by created_at DESC, but this ensures frontend sorting too
+            const sortedData = [...data].sort((a, b) => {
+                const dateA = new Date(a.startDate).getTime();
+                const dateB = new Date(b.startDate).getTime();
+                return dateB - dateA; // Descending order (newest first)
+            });
+            setAllocations(sortedData);
+        } catch (err) {
+            console.error('Error fetching allocations:', err);
+            setAllocations([]);
+        } finally {
+            setLoadingAllocations(false);
+        }
+    };
 
+    // Handle successful form submission
+    const handleAllocationSuccess = () => {
         fetchAllocations();
-    }, []);
+        setActiveTab('pending'); // Switch to pending tab after submission
+    };
+
+    // Redirect to login if employee ID is not found
+    useEffect(() => {
+        if (!employeeId) {
+            navigate('/');
+        }
+    }, [employeeId, navigate]);
+
+    useEffect(() => {
+        if (employeeId) {
+            fetchAllocations();
+        }
+    }, [employeeId]);
 
     // Fetch AI Tools from API
     useEffect(() => {
@@ -58,107 +89,93 @@ function Employee() {
         }
     };
 
+    // Don't render if employee ID is not found (will redirect)
+    if (!employeeId) {
+        return null;
+    }
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-purple-600 p-8">
             <div className="max-w-6xl mx-auto">
                 <div className="bg-white rounded-xl shadow-2xl p-8">
                     <div className="flex justify-between items-center mb-6">
                         <h1 className="text-4xl font-semibold text-gray-800">Employee Dashboard</h1>
-                        <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowRequestModal(true)}
+                            className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center gap-2"
+                        >
+                            <span className="text-xl">+</span>
+                            <span>New Request</span>
+                        </button>
+                    </div>
+
+                    {/* Tabs */}
+                    <div className="border-b border-gray-200 mb-6">
+                        <div className="flex">
                             <button
-                                onClick={() => setShowRequestModal(true)}
-                                className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center gap-2"
+                                onClick={() => setActiveTab('approved')}
+                                className={`px-6 py-3 text-center font-semibold transition-all duration-300 ${activeTab === 'approved'
+                                    ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white border-b-2 border-indigo-600'
+                                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                                    }`}
                             >
-                                <span className="text-xl">+</span>
-                                <span>New Request</span>
+                                Approved Tools
                             </button>
                             <button
-                                onClick={() => setShowRequestModal(true)}
-                                className="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl flex items-center gap-2"
+                                onClick={() => setActiveTab('pending')}
+                                className={`px-6 py-3 text-center font-semibold transition-all duration-300 ${activeTab === 'pending'
+                                    ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white border-b-2 border-indigo-600'
+                                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                                    }`}
                             >
-                                <span>Pending Request</span>
+                                Pending Requests
                             </button>
+                            <button
+                                onClick={() => setActiveTab('rejected')}
+                                className={`px-6 py-3 text-center font-semibold transition-all duration-300 ${activeTab === 'rejected'
+                                    ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white border-b-2 border-indigo-600'
+                                    : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                                    }`}
+                            >
+                                Rejected Requests
+                            </button>
+
                         </div>
-
                     </div>
 
-                    {/* Assigned Tools Section */}
-                    <div>
-                        <h2 className="text-2xl font-bold text-gray-800 mb-4">Assigned Tools</h2>
-                        {loadingAllocations ? (
-                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-                                <p className="text-gray-600 text-lg">Loading assigned tools...</p>
-                            </div>
-                        ) : allocations.length === 0 ? (
-                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-                                <p className="text-gray-600 text-lg">No tools assigned yet.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                {allocations.map((allocation) => (
-                                    <div
-                                        key={allocation.id}
-                                        className="bg-gray-50 border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow"
-                                    >
-                                        <div className="flex justify-between items-start mb-4">
-                                            <div>
-                                                <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${allocation.status === 'approved'
-                                                        ? 'bg-green-100 text-green-800'
-                                                        : allocation.status === 'rejected'
-                                                            ? 'bg-red-100 text-red-800'
-                                                            : 'bg-yellow-100 text-yellow-800'
-                                                    }`}>
-                                                    {allocation.status.replace('_', ' ').toUpperCase()}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                    Tool Name
-                                                </label>
-                                                <p className="text-lg font-semibold text-gray-800">{allocation.aiToolName}</p>
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                    Monthly Price
-                                                </label>
-                                                <p className="text-lg font-semibold text-gray-800">${allocation.monthlyPrice}</p>
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                    Start Date
-                                                </label>
-                                                <p className="text-lg font-semibold text-gray-800">{allocation.startDate}</p>
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                    End Date
-                                                </label>
-                                                <p className="text-lg font-semibold text-gray-800">{allocation.endDate}</p>
-                                            </div>
-                                            {allocation.notes && (
-                                                <div className="md:col-span-2">
-                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                        Notes
-                                                    </label>
-                                                    <p className="text-sm text-gray-600">{allocation.notes}</p>
-                                                </div>
-                                            )}
-                                            {allocation.rejectionReason && (
-                                                <div className="md:col-span-3">
-                                                    <label className="block text-sm font-medium text-red-700 mb-1">
-                                                        Rejection Reason
-                                                    </label>
-                                                    <p className="text-sm text-red-600 bg-red-50 p-2 rounded">{allocation.rejectionReason}</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                    {/* Tab Content */}
+                    {activeTab === 'pending' && (
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-800 mb-4">Pending Requests</h2>
+                            <AllocationList
+                                allocations={allocations}
+                                loading={loadingAllocations}
+                                status="pending_approval"
+                            />
+                        </div>
+                    )}
+
+                    {activeTab === 'rejected' && (
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-800 mb-4">Rejected Requests</h2>
+                            <AllocationList
+                                allocations={allocations}
+                                loading={loadingAllocations}
+                                status="rejected"
+                            />
+                        </div>
+                    )}
+
+                    {activeTab === 'approved' && (
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-800 mb-4">Approved Tools</h2>
+                            <AllocationList
+                                allocations={allocations}
+                                loading={loadingAllocations}
+                                status="approved"
+                            />
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -199,6 +216,7 @@ function Employee() {
                 <NewToolAllocationForm
                     onClose={() => setShowAllocationForm(false)}
                     aiTools={aiTools}
+                    onSuccess={handleAllocationSuccess}
                 />
             )}
         </div>

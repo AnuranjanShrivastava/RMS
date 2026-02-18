@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import apiRoutes from './routes';
 import { errorHandler } from './middlewares/errorHandler';
 import { notFound } from './middlewares/notFound';
+import { testConnection } from './config/database';
+import { initDatabase } from './database/initDatabase';
 
 dotenv.config();
 
@@ -33,7 +35,27 @@ app.use(notFound);
 // Error handler
 app.use(errorHandler);
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-});
+// Initialize database and start server
+const startServer = async () => {
+    try {
+        // Create database if it doesn't exist
+        const { createDatabaseIfNotExists } = await import('./config/database');
+        await createDatabaseIfNotExists();
+
+        // Test database connection
+        await testConnection();
+
+        // Initialize database schema
+        await initDatabase();
+
+        // Start server
+        app.listen(PORT, () => {
+            console.log(`Server is running on http://localhost:${PORT}`);
+        });
+    } catch (error) {
+        console.error('Failed to start server:', error);
+        process.exit(1);
+    }
+};
+
+startServer();
